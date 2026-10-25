@@ -35,12 +35,14 @@ MANAGER_STATE="$MANAGER_STATE_DIR/deployment.json"
 
 usage() {
     cat <<'HELP'
-用法：bash install.sh [参数]
+用法：bash install.sh [install|menu] [参数]
       ocimao [管理命令] [参数]
 
 下载并校验 GitHub 闭源二进制包，构建并启动 panel、worker、logs。
 在已经解压的二进制目录运行时直接使用该目录；其他情况默认安装到 /opt/oci-mao。
 支持直接从刚克隆的仓库运行；不会安装 Docker、删除数据卷或覆盖已有 .env。
+交互运行显示管理菜单，选择 16 安装/修复；install 命令直接执行安装/修复。
+非交互运行保持自动安装，--check 始终只进行预检。
 
 参数：
   --dir PATH      安装目录，默认 /opt/oci-mao（已解压包内运行时为包目录）。
@@ -53,7 +55,7 @@ usage() {
   --help, -h      显示本帮助。
   --yes           明确确认卸载、清除 Telegram 绑定或解除备份验证锁定。
 
-安装后输入 ocimao 打开管理菜单；支持 status、start、stop、restart、logs、
+安装后输入 ocimao 打开管理菜单；支持 install、status、start、stop、restart、logs、
 config、backup [ZIP]、restore ZIP、upgrade、version、clear-telegram、uninstall、
 unlock-backup、https-status、disable-https。备份密码通过隐藏输入或
 OCI_MAO_BACKUP_PASSWORD 环境变量提供，不放在命令参数中。
@@ -62,7 +64,7 @@ OCI_MAO_BACKUP_PASSWORD 环境变量提供，不放在命令参数中。
 
 示例：
   sudo bash install.sh --dir /opt/oci-mao --check
-  sudo bash install.sh --dir /opt/oci-mao
+  sudo bash install.sh install --dir /opt/oci-mao
   bash install.sh --project oci-panel --timeout 300
 
 首次原子创建本地默认 .env 和项目标记；后续运行保留它们及数据卷。
@@ -114,14 +116,15 @@ while (( $# > 0 )); do
             (( $# >= 2 )) || fail '--timeout 缺少秒数。'
             [[ "$2" =~ ^[1-9][0-9]{0,5}$ ]] || fail '--timeout 必须是 1 至 999999 的整数秒。'
             TIMEOUT="$2"; shift 2 ;;
-        menu|status|start|stop|restart|logs|config|backup|restore|upgrade|version|clear-telegram|clear-tg|uninstall|unlock-backup|https-status|disable-https)
+        install|menu|status|start|stop|restart|logs|config|backup|restore|upgrade|version|clear-telegram|clear-tg|uninstall|unlock-backup|https-status|disable-https)
             [[ -z "$ACTION" ]] || fail '一次只能执行一个管理命令。'
             ACTION="$1"; shift ;;
         -*) fail "未知参数：$1。使用 --help 查看用法。" ;;
         *) [[ -n "$ACTION" ]] || fail "未知参数：$1。使用 --help 查看用法。"; ACTION_ARGS+=("$1"); shift ;;
     esac
 done
-if [[ "$INVOKED_NAME" == ocimao && -z "$ACTION" ]]; then ACTION=menu; fi
+if [[ "$INVOKED_NAME" == ocimao && -z "$ACTION" && "$CHECK_ONLY" == 0 && -z "$VERSION_ARG" && -z "$SHA_ARG" ]]; then ACTION=menu; fi
+if [[ "$ACTION" == install && ${#ACTION_ARGS[@]} != 0 ]]; then fail 'install 不接受位置参数，请使用 --dir 等安装参数。'; fi
 if [[ -n "$PROJECT_ARG" ]]; then
     valid_project "$PROJECT_ARG" || fail '项目名只允许小写字母、数字、下划线和连字符，首字符必须是字母或数字。'
 fi
@@ -166,6 +169,9 @@ PY
 COMPOSE_FILE="$ROOT_DIR/compose.yaml"
 ENV_FILE="$ROOT_DIR/.env"
 PROJECT_FILE="$ROOT_DIR/.oci-panel-project"
+if [[ -z "$ACTION" && -t 0 && -z "$VERSION_ARG" && -z "$SHA_ARG" && "$CHECK_ONLY" == 0 ]]; then
+    ACTION=menu
+fi
 
 # 下载文件始终通过 HTTPS；不执行下载结果。其他版本没有可验证摘要时直接停止。
 download() {
@@ -285,8 +291,48 @@ with zipfile.ZipFile(archive_path) as archive:
 PY
 }
 
+installed_version() {
+    python3 - "$ROOT_DIR/RELEASE.bin" <<'PY'
+import json,re,sys,zlib
+from pathlib import Path
+raw=Path(sys.argv[1]).read_bytes();magic=b'OCI-MAO-RELEASE\x00\x02'
+if not raw.startswith(magic):raise SystemExit('无法读取已安装版本；发布清单格式无效。')
+decoder=zlib.decompressobj();plain=decoder.decompress(raw[len(magic):],1024*1024+1)
+if len(plain)>1024*1024 or not decoder.eof or decoder.unused_data or decoder.unconsumed_tail:raise SystemExit('版本清单损坏。')
+value=json.loads(plain).get('version','')
+if not re.fullmatch(r'v?\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?',value):raise SystemExit('版本清单无效。')
+print(value)
+PY
+}
+
+package_is_complete() {
+    local directory="$1" file arch helper
+    local modules=()
+    for file in compose.yaml Dockerfile README.md resources.bin RELEASE.bin; do
+        [[ -f "$directory/$file" && ! -L "$directory/$file" ]] || return 1
+    done
+    for arch in amd64 arm64; do
+        modules=("$directory/_native/$arch/"*.so)
+        [[ -f "${modules[0]}" && ${#modules[@]} -ge 196 ]] || return 1
+        for helper in _mao_resources mao_runtime _framework_routes; do
+            modules=("$directory/_native/$arch/$helper"*.so)
+            [[ -f "${modules[0]}" ]] || return 1
+        done
+    done
+    return 0
+}
+
+INSTALL_NEEDS_DOWNLOAD=0
+if [[ "$ACTION" == install ]] && ! package_is_complete "$ROOT_DIR"; then
+    INSTALL_NEEDS_DOWNLOAD=1
+    if [[ -z "$VERSION_ARG" && -f "$ROOT_DIR/RELEASE.bin" && ! -L "$ROOT_DIR/RELEASE.bin" ]] && repair_version="$(installed_version 2>/dev/null)"; then
+        VERSION_ARG="$repair_version"
+        VERSION="${VERSION_ARG#v}"
+    fi
+fi
+
 STAGE="获取并校验二进制包"
-if [[ -z "$ACTION" && ( -n "$VERSION_ARG" || -n "$SHA_ARG" || !( -e "$COMPOSE_FILE" || -e "$ROOT_DIR/resources.bin" || -e "$ROOT_DIR/_native" ) ) ]]; then
+if [[ ( -z "$ACTION" || "$ACTION" == install ) && ( -n "$VERSION_ARG" || -n "$SHA_ARG" || "$INSTALL_NEEDS_DOWNLOAD" == 1 || !( -e "$COMPOSE_FILE" || -e "$ROOT_DIR/resources.bin" || -e "$ROOT_DIR/_native" ) ) ]]; then
     command -v curl >/dev/null 2>&1 || fail '找不到 curl。请先安装 curl。'
     TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/oci-mao-download.XXXXXX")"
     ARCHIVE="$TEMP_DIR/OCI-Mao-$VERSION"
@@ -408,25 +454,7 @@ print('管理命令已就绪：'+str(launcher))
 PY
 }
 
-installed_version() {
-    python3 - "$ROOT_DIR/RELEASE.bin" <<'PY'
-import json,re,sys,zlib
-from pathlib import Path
-raw=Path(sys.argv[1]).read_bytes();magic=b'OCI-MAO-RELEASE\x00\x02'
-if not raw.startswith(magic):raise SystemExit('无法读取已安装版本；发布清单格式无效。')
-decoder=zlib.decompressobj();plain=decoder.decompress(raw[len(magic):],1024*1024+1)
-if len(plain)>1024*1024 or not decoder.eof or decoder.unused_data or decoder.unconsumed_tail:raise SystemExit('版本清单损坏。')
-value=json.loads(plain).get('version','')
-if not re.fullmatch(r'v?\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?',value):raise SystemExit('版本清单无效。')
-print(value)
-PY
-}
-
-manager_ready() {
-    [[ -f "$COMPOSE_FILE" && ! -L "$COMPOSE_FILE" ]] || { say '未检测到此目录的 OCI-Mao 部署，请先安装。'; return 1; }
-    command -v docker >/dev/null 2>&1 || { say '找不到 Docker，请先安装 Docker。'; return 1; }
-    docker compose version >/dev/null 2>&1 && docker info >/dev/null 2>&1 || { say 'Docker 或 Compose 不可用。'; return 1; }
-    [[ -n "$MARKER_PROJECT" || -n "$ENV_PROJECT" || -n "$PROJECT_ARG" ]] || { say '无法确认已有部署项目，请先安装或明确指定原项目。'; return 1; }
+manager_check_container_identity() {
     local container service details
     for service in panel worker logs; do
         container="$(compose ps --all -q "$service")" || return 1
@@ -434,6 +462,14 @@ manager_ready() {
         details="$(docker inspect "$container")" || return 1
         printf '%s\n' "$details" | python3 -c 'import json,sys; from pathlib import Path; root=Path(sys.argv[1]).resolve(); project,service=sys.argv[2:]; rows=json.load(sys.stdin); assert isinstance(rows,list) and len(rows)==1,"容器身份异常"; item=rows[0]; labels=item.get("Config",{}).get("Labels",{}); assert labels.get("com.docker.compose.project")==project and labels.get("com.docker.compose.service")==service,"容器不属于本项目"; assert Path(labels.get("com.docker.compose.project.working_dir","")).resolve()==root,"同名项目来自其他安装目录"; configs=labels.get("com.docker.compose.project.config_files","").split(","); assert configs and Path(configs[0]).resolve()==root/"compose.yaml" and all(Path(p).resolve() in {root/"compose.yaml",root/"compose.ocimao-https.yaml"} for p in configs),"容器配置文件不属于本部署"; mounts=[m for m in item.get("Mounts",[]) if m.get("Destination")=="/app/data"]; assert len(mounts)==1 and mounts[0].get("Type")=="volume" and mounts[0].get("Name")==project+"_panel-data","容器数据卷不属于本部署"' "$ROOT_DIR" "$PROJECT" "$service" || return 1
     done
+}
+
+manager_ready() {
+    [[ -f "$COMPOSE_FILE" && ! -L "$COMPOSE_FILE" ]] || { say '未检测到此目录的 OCI-Mao 部署，请先安装。'; return 1; }
+    command -v docker >/dev/null 2>&1 || { say '找不到 Docker，请先安装 Docker。'; return 1; }
+    docker compose version >/dev/null 2>&1 && docker info >/dev/null 2>&1 || { say 'Docker 或 Compose 不可用。'; return 1; }
+    [[ -n "$MARKER_PROJECT" || -n "$ENV_PROJECT" || -n "$PROJECT_ARG" ]] || { say '无法确认已有部署项目，请先安装或明确指定原项目。'; return 1; }
+    manager_check_container_identity || return 1
     local owner
     owner="$(docker volume inspect --format '{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "com.docker.compose.volume" }}' "${PROJECT}_panel-data" 2>/dev/null)" || owner=""
     [[ -z "$owner" || "$owner" == "$PROJECT|panel-data" ]] || { say '本项目数据卷归属不匹配，停止管理操作。'; return 1; }
@@ -745,8 +781,27 @@ print('程序已卸载。Docker 数据卷、.env、配置回滚副本和备份�
 PY
 }
 
+manager_install() {
+    [[ -n "$SCRIPT_FILE" && -f "$SCRIPT_FILE" ]] || { say '请先将 install.sh 下载为文件，再执行安装/修复。'; return 1; }
+    local options=(install --dir "$ROOT_DIR" --timeout "$TIMEOUT")
+    if [[ -n "$MARKER_PROJECT" || -n "$ENV_PROJECT" || -n "$PROJECT_ARG" ]]; then options+=(--project "$PROJECT"); fi
+    if [[ -n "$VERSION_ARG" ]]; then options+=(--version "$VERSION_ARG"); fi
+    if [[ -n "$SHA_ARG" ]]; then options+=(--sha256 "$SHA_ARG"); fi
+    if (( CHECK_ONLY )); then options+=(--check); fi
+    say "安装/修复：$ROOT_DIR；保留已有 .env、项目名和数据卷。"
+    bash "$SCRIPT_FILE" "${options[@]}" || return $?
+    if (( ! CHECK_ONLY )); then
+        COMPOSE_FILE="$ROOT_DIR/compose.yaml"
+        MARKER_PROJECT="$(cat -- "$PROJECT_FILE")"
+        MARKER_PROJECT="${MARKER_PROJECT%$'\r'}"
+        read_env_project
+        PROJECT="$MARKER_PROJECT"
+    fi
+}
+
 manager_dispatch() {
     local command="$1"; shift
+    [[ "$command" == install ]] && { manager_install "$@"; return; }
     [[ "$command" == version ]] && { installed_version; return; }
     manager_ready || return 1
     case "$command" in
@@ -781,6 +836,7 @@ manager_menu() {
  11) 清除Tg绑定    12) 卸载
  13) 解除备份验证锁定
  14) HTTPS 服务状态  15) 恢复原端口访问（停用 HTTPS）
+ 16) 安装/修复（保留配置和数据卷）
   0) 退出
 MENU
         printf '请选择：'; IFS= read -r choice || return 0
@@ -790,8 +846,8 @@ MENU
             4) command=restart ;; 5) command=logs ;; 6) command=config ;; 7) command=backup ;;
             8) command=restore ;; 9) command=upgrade ;; 10) command=version ;;
             11) command=clear-telegram ;; 12) command=uninstall ;; 13) command=unlock-backup ;;
-            14) command=https-status ;; 15) command=disable-https ;;
-            *) say '请输入 0 至 15。'; continue ;;
+            14) command=https-status ;; 15) command=disable-https ;; 16) command=install ;;
+            *) say '请输入 0 至 16。'; continue ;;
         esac
         if [[ "$command" == config ]]; then
             printf '1) 修改配置  2) 回滚到上次配置  0) 返回\n请选择：'
@@ -807,12 +863,11 @@ MENU
     done
 }
 
-if [[ -z "$ACTION" && -f "$PROJECT_FILE" && -f "$ENV_FILE" && -t 0 && -z "$VERSION_ARG" && -z "$SHA_ARG" && "$CHECK_ONLY" == 0 ]]; then
+if [[ "$ACTION" == menu && -f "$PROJECT_FILE" && -f "$ENV_FILE" && -t 0 ]]; then
     say "检测到已有 OCI-Mao：$ROOT_DIR（$PROJECT）。"
     register_manager || fail '管理命令创建失败。'
-    ACTION=menu
 fi
-if [[ -n "$ACTION" ]]; then
+if [[ -n "$ACTION" && "$ACTION" != install ]]; then
     if [[ "$ACTION" == menu ]]; then manager_menu; else manager_dispatch "$ACTION" "${ACTION_ARGS[@]}"; fi
     exit $?
 fi
@@ -835,6 +890,7 @@ for command in docker mktemp sed ln rm; do
 done
 docker compose version >/dev/null 2>&1 || fail 'Docker Compose v2 不可用。请安装/启用 docker compose 插件。'
 docker info >/dev/null 2>&1 || fail '无法连接 Docker。请启动 Docker，并确认当前用户有访问权限；Linux 可按 README 配置 docker 组或使用 sudo。'
+manager_check_container_identity || fail '已有同名项目容器的目录、配置或数据卷不属于本部署，未执行安装/修复。'
 
 say "安装目录：$ROOT_DIR"
 say "固定项目：$PROJECT；数据卷：${PROJECT}_panel-data"
