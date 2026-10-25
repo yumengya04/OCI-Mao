@@ -4,9 +4,9 @@
 
 **本项目采用闭源二进制分发。** 此仓库用于提供项目说明、安装脚本和发布包；公开下载二进制不代表授予开放源代码许可。安装包不提供原始业务源码，使用和再分发应遵守项目授权约定。第三方组件适用各自许可证。
 
-- 项目仓库：<https://github.com/yumengya04/OCI-Mao>
-- 当前版本：**0.1.0**
-- 发布下载：[OCI-Mao 0.1.0](https://github.com/yumengya04/OCI-Mao/releases/tag/0.1.0)
+- 项目仓库：<https://github.com/yumengya04/Oci-Mao>
+- 本安装包版本：**0.1.1**
+- 发布下载：[OCI-Mao Releases](https://github.com/yumengya04/Oci-Mao/releases)
 - 安装入口：[install.sh](install.sh)
 
 ## 功能介绍
@@ -65,11 +65,11 @@ docker compose version
 
 ```bash
 curl -fL --retry 3 -o install.sh \
-  https://raw.githubusercontent.com/yumengya04/OCI-Mao/main/install.sh
+  https://raw.githubusercontent.com/yumengya04/Oci-Mao/main/install.sh
 sudo bash install.sh --dir /opt/oci-mao
 ```
 
-脚本会取得 `0.1.0` 的二进制发布包，校验内容，解压到指定目录，构建 Docker 镜像并启动三个服务。仓库中的 `OCI-Mao-0.1.0` 也可作为本地安装包使用。
+脚本会取得 `0.1.1` 的二进制发布包，校验内容，解压到指定目录，构建 Docker 镜像并启动三个服务。对应 Release 必须先上传 `OCI-Mao-0.1.1`。同目录中的二进制安装包也可使用；发布前离线安装请通过 `--sha256` 指定随包提供的正确摘要。
 
 | 服务 | 用途 | 默认地址 |
 | --- | --- | --- |
@@ -87,7 +87,7 @@ sudo bash install.sh --dir /opt/oci-mao
 
 ```bash
 curl -fL --retry 3 -o install.sh \
-  https://raw.githubusercontent.com/yumengya04/OCI-Mao/main/install.sh
+  https://raw.githubusercontent.com/yumengya04/Oci-Mao/main/install.sh
 sudo bash install.sh --dir /opt/oci-mao --check
 ```
 
@@ -137,24 +137,24 @@ API 公钥须先登记到 OCI 用户，并与私钥和指纹对应。只粘贴�
 
 ## 安装包与校验
 
-当前发布文件名是 **`OCI-Mao-0.1.0`**，没有扩展名，内容采用 ZIP 格式。
+本版只有一个发布包 **`OCI-Mao-0.1.1`**，安装和面板更新共用该文件。没有扩展名，内容采用 ZIP 格式；附带 `OCI-Mao-0.1.1.sha256` 校验文件。
 
-0.1.0 发布包的 SHA256：
+安装脚本通过 GitHub Release 资产的 SHA256 摘要校验 0.1.1，也可以通过 `--sha256` 显式指定随包提供的摘要。原 0.1.0 的校验值仍保留在脚本中，原发布包不变：
 
 ```text
 bbda50e7f1108cbd610e5020ec46a8006723475db5dca327f41c53a0794bdac1
 ```
 
-这个值与 GitHub Release 资产的 SHA256 一致。当前 Release 只提供上述安装包，没有单独的 `.sha256` 文件。安装脚本内置此版本的校验值；其他版本必须具有 GitHub 提供的有效资产摘要，或通过 `--sha256` 显式指定正确的校验值。
+上面的值仅适用于原 0.1.0。其他版本必须具有 GitHub 提供的有效资产摘要，或通过 `--sha256` 显式指定正确的校验值。
 
 也可以手动下载并核对：
 
 ```bash
-curl -fL --retry 3 -o OCI-Mao-0.1.0 \
-  https://github.com/yumengya04/OCI-Mao/releases/download/0.1.0/OCI-Mao-0.1.0
-printf '%s  %s\n' \
-  bbda50e7f1108cbd610e5020ec46a8006723475db5dca327f41c53a0794bdac1 \
-  OCI-Mao-0.1.0 | sha256sum -c -
+curl -fL --retry 3 -o OCI-Mao-0.1.1 \
+  https://github.com/yumengya04/Oci-Mao/releases/download/0.1.1/OCI-Mao-0.1.1
+curl -fL --retry 3 -o OCI-Mao-0.1.1.sha256 \
+  https://github.com/yumengya04/Oci-Mao/releases/download/0.1.1/OCI-Mao-0.1.1.sha256
+sha256sum -c OCI-Mao-0.1.1.sha256
 ```
 
 把安装包与新下载的 `install.sh` 放在同一目录，再执行快速安装命令。脚本会优先校验并使用可用的本地发布包，无需先手动解压。
@@ -168,14 +168,14 @@ printf '%s  %s\n' \
 ```bash
 bash install.sh --help
 sudo bash install.sh --dir /opt/oci-mao --check
-sudo bash install.sh --dir /opt/oci-mao --version 0.1.0 --timeout 300
+sudo bash install.sh --dir /opt/oci-mao --version 0.1.1 --timeout 300
 sudo bash install.sh --dir /opt/oci-mao --project oci-panel
 ```
 
 | 参数 | 含义 |
 | --- | --- |
 | `--dir 路径` | 指定部署目录；通常默认 `/opt/oci-mao`，从已解压的完整二进制目录运行时可直接使用该目录 |
-| `--version 版本` | 指定 Release 版本，当前默认 `0.1.0`；显式指定时重新校验并安装对应发布包 |
+| `--version 版本` | 指定 Release 版本，当前默认 `0.1.1`；显式指定时重新校验并安装对应发布包 |
 | `--sha256 摘要` | 显式指定安装包的 SHA256，必须与实际内容一致 |
 | `--project 名称` | 首次安装指定 Compose 项目名；已有部署沿用原项目名 |
 | `--timeout 秒数` | 构建后等待服务就绪的时限，默认 180 秒 |
@@ -203,54 +203,33 @@ sudo docker compose -p oci-panel up -d
 
 容器配置为 `restart: unless-stopped`。Docker 随系统启动，且容器未被手动停止时，服务器重启后服务会自动恢复。后台任务需要 `worker` 持续运行。
 
-## 数据、备份与升级
+## 终端管理菜单
 
-三个服务共享 `panel-data` 命名卷，数据库、加密密钥和运行数据保存在该卷中。不要使用 `docker compose down -v` 做常规重装或升级；它会删除数据卷。
+安装完成后输入 `ocimao` 打开管理菜单；需要 Docker 管理权限时使用 `sudo ocimao`。脚本会记录部署目录和 Compose 项目，重跑时识别已有安装并沿用原配置与数据卷。
 
-“系统设置 → 系统 → 备份恢复”可创建密码保护的面板配置备份，也可配置 OCI 对象存储或 OSS 定时备份。配置备份与完整数据卷快照用途不同：迁移完整运行数据时，需要同时保留数据库、`secret.key` 和其他卷内容。
-
-安装新版本前先备份。取得新的安装脚本后，使用原 `--dir` 和原 `--project` 执行，按实际已发布的 Release 版本设置 `--version`。已有配置与数据卷会保留；核对任务和服务状态后继续使用。
-
-网页“系统更新”使用固定仓库 `yumengya04/OCI-Mao`。网页自动下载流程要求 Release 同时提供 `panel-update.zip` 和 `panel-update.zip.sha256`，并配置独立主机更新执行器；**当前 0.1.0 Release 尚未提供这两个资产**，请使用本 README 的安装脚本维护方式。
-
-## HTTPS 与可选 AI 网关
-
-默认端口绑定宿主机回环地址。使用域名访问时，在服务器配置 HTTPS 反向代理，并同步修改部署目录 `.env` 中的日志地址和允许的 Origin：
-
-```dotenv
-COMPOSE_PROJECT_NAME=oci-panel
-PANEL_LOG_WS_URL=wss://panel.example.com/ws/logs
-PANEL_ALLOWED_ORIGINS=https://panel.example.com
+```text
+== OCI Mao 管理 ==
+  1) 查看状态        2) 启动        3) 停止        4) 重启
+  5) 查看实时日志    6) 修改配置（含回滚）
+  7) 备份            8) 恢复
+  9) 升级到最新版   10) 版本信息
+ 11) 清除Tg绑定    12) 卸载
+ 13) 解除备份验证锁定
+ 14) HTTPS 服务状态  15) 恢复原端口访问（停用 HTTPS）
+  0) 退出
 ```
 
-Nginx 示例位于二进制资源容器中，可在安装完成后查看：
+也可直接执行子命令：
 
 ```bash
-cd /opt/oci-mao
-sudo docker compose -p oci-panel exec -T panel python -c \
-  'import _mao_resources; print(_mao_resources.read_text("deploy/nginx.conf.example"), end="")'
-```
-
-按示例转发面板、日志及 WebSocket 路径，设置有效证书，检查 Nginx 配置后重载，并执行 `sudo docker compose -p oci-panel up -d` 应用环境变量。
-
-基础安装包含面板内的 Oracle AI 工作空间。需要独立 AI 网关时，使用包内的可选 Compose 配置：
-
-```bash
-cd /opt/oci-mao
-sudo docker compose -p oci-panel \
-  -f compose.yaml -f deploy/compose.oracle-ai.yaml up -d --build
-```
-
-AI 扩展依赖相应租户权限与服务资格。后续维护继续使用两份 Compose 文件；基础安装脚本默认只启动三个基础服务。
-
-## 常见问题
-
-**只有安装脚本，没有 `compose.yaml` 怎么办？** 直接运行本仓库的新安装脚本，它会取得并校验二进制包。仓库根目录中的三个发布文件不是已解压的 Docker 构建目录。
-
-**服务器安装完成，电脑打不开面板？** 先建立同时转发 8501 和 8502 的 SSH 隧道，再访问本机的 `http://127.0.0.1:8501`；域名访问需要配置反向代理。
-
-**安装提示缺少 Docker、Compose 或权限不足？** 按安装前准备补齐环境。使用 `sudo` 时确认 `sudo docker info` 成功，Compose 必须支持 `docker compose` 命令。
-
-**下载或镜像构建失败？** 检查服务器到 GitHub、镜像仓库和 Python 包源的连接。脚本返回非零退出码，修正后使用原目录和项目名重跑。
-
-**健康检查超时？** 在部署目录运行 `sudo docker compose -p oci-panel logs --tail 100 panel worker logs`，按失败服务排查；启动较慢时可提高 `--timeout`。
+sudo ocimao status
+sudo ocimao start
+sudo ocimao stop
+sudo ocimao restart
+sudo ocimao logs
+sudo ocimao version
+sudo ocimao upgrade
+sudo ocimao config
+sudo ocimao config --rollback
+sudo ocimao backup /var/backups/oci-mao/config.zip
+sudo ocimao restore /var/backups/oci-mao/config.zip
