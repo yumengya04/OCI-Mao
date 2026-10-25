@@ -4,9 +4,9 @@
 
 **本项目采用闭源二进制分发。** 此仓库用于提供项目说明、安装脚本和发布包；公开下载二进制不代表授予开放源代码许可。安装包不提供原始业务源码，使用和再分发应遵守项目授权约定。第三方组件适用各自许可证。
 
-- 项目仓库：<https://github.com/yumengya04/Oci-Mao>
+- 项目仓库：<https://github.com/yumengya04/OCI-Mao>
 - 当前版本：**0.1.0**
-- 发布下载：[OCI-Mao 0.1.0](https://github.com/yumengya04/Oci-Mao/releases/tag/0.1.0)
+- 发布下载：[OCI-Mao 0.1.0](https://github.com/yumengya04/OCI-Mao/releases/tag/0.1.0)
 - 安装入口：[install.sh](install.sh)
 
 ## 功能介绍
@@ -65,7 +65,7 @@ docker compose version
 
 ```bash
 curl -fL --retry 3 -o install.sh \
-  https://raw.githubusercontent.com/yumengya04/Oci-Mao/main/install.sh
+  https://raw.githubusercontent.com/yumengya04/OCI-Mao/main/install.sh
 sudo bash install.sh --dir /opt/oci-mao
 ```
 
@@ -87,7 +87,7 @@ sudo bash install.sh --dir /opt/oci-mao
 
 ```bash
 curl -fL --retry 3 -o install.sh \
-  https://raw.githubusercontent.com/yumengya04/Oci-Mao/main/install.sh
+  https://raw.githubusercontent.com/yumengya04/OCI-Mao/main/install.sh
 sudo bash install.sh --dir /opt/oci-mao --check
 ```
 
@@ -151,7 +151,7 @@ bbda50e7f1108cbd610e5020ec46a8006723475db5dca327f41c53a0794bdac1
 
 ```bash
 curl -fL --retry 3 -o OCI-Mao-0.1.0 \
-  https://github.com/yumengya04/Oci-Mao/releases/download/0.1.0/OCI-Mao-0.1.0
+  https://github.com/yumengya04/OCI-Mao/releases/download/0.1.0/OCI-Mao-0.1.0
 printf '%s  %s\n' \
   bbda50e7f1108cbd610e5020ec46a8006723475db5dca327f41c53a0794bdac1 \
   OCI-Mao-0.1.0 | sha256sum -c -
