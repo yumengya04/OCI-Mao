@@ -66,10 +66,12 @@ docker compose version
 ```bash
 curl -fL --retry 3 -o install.sh \
   https://raw.githubusercontent.com/yumengya04/Oci-Mao/main/install.sh
-sudo bash install.sh --dir /opt/oci-mao
+sudo bash install.sh install --dir /opt/oci-mao
 ```
 
-脚本会取得 `0.1.1` 的二进制发布包，校验内容，解压到指定目录，构建 Docker 镜像并启动三个服务。对应 Release 必须先上传 `OCI-Mao-0.1.1`。同目录中的二进制安装包也可使用；发布前离线安装请通过 `--sha256` 指定随包提供的正确摘要。
+`install` 直接执行安装。首次安装会取得 `0.1.1` 的二进制发布包，校验内容，解压到指定目录，构建 Docker 镜像并启动三个服务。同目录中的二进制安装包也可使用；离线安装请通过 `--sha256` 指定随包提供的正确摘要。
+
+希望先选择操作时，运行 `sudo bash install.sh --dir /opt/oci-mao`。交互终端会先显示管理菜单，选择 **16）安装 / 修复** 开始安装；选择 0 退出不会下载或安装。已有部署会自动识别，完整安装目录可直接重建并启动，缺少文件时会下载校验对应版本后修复，保留原 `.env`、项目名和数据卷。
 
 | 服务 | 用途 | 默认地址 |
 | --- | --- | --- |
@@ -96,7 +98,7 @@ sudo bash install.sh --dir /opt/oci-mao --check
 ### 2. 正式安装
 
 ```bash
-sudo bash install.sh --dir /opt/oci-mao --timeout 300
+sudo bash install.sh install --dir /opt/oci-mao --timeout 300
 ```
 
 首次安装按顺序完成：取得发布包、校验与解压、确认项目及数据卷、准备本地配置、构建镜像、启动服务、检查面板和日志健康端点。`--timeout` 指构建完成后的服务就绪等待时间，不包含下载与构建时间。
@@ -168,8 +170,8 @@ sha256sum -c OCI-Mao-0.1.1.sha256
 ```bash
 bash install.sh --help
 sudo bash install.sh --dir /opt/oci-mao --check
-sudo bash install.sh --dir /opt/oci-mao --version 0.1.1 --timeout 300
-sudo bash install.sh --dir /opt/oci-mao --project oci-panel
+sudo bash install.sh install --dir /opt/oci-mao --version 0.1.1 --timeout 300
+sudo bash install.sh install --dir /opt/oci-mao --project oci-panel
 ```
 
 | 参数 | 含义 |
@@ -183,6 +185,8 @@ sudo bash install.sh --dir /opt/oci-mao --project oci-panel
 | `--help`、`-h` | 显示帮助 |
 
 安装目录支持空格。升级和重跑时，请使用原部署目录与原项目名，避免连接到另一份数据卷。
+
+`install` 直接安装或修复，`menu` 打开管理菜单。未指定命令的交互运行也会打开菜单；非交互运行、`--check` 或显式指定版本、摘要时直接执行对应安装流程。
 
 ## 日常管理
 
@@ -216,6 +220,7 @@ sudo docker compose -p oci-panel up -d
  11) 清除Tg绑定    12) 卸载
  13) 解除备份验证锁定
  14) HTTPS 服务状态  15) 恢复原端口访问（停用 HTTPS）
+ 16) 安装/修复（保留配置和数据卷）
   0) 退出
 ```
 
@@ -229,7 +234,81 @@ sudo ocimao restart
 sudo ocimao logs
 sudo ocimao version
 sudo ocimao upgrade
+sudo ocimao install
 sudo ocimao config
 sudo ocimao config --rollback
 sudo ocimao backup /var/backups/oci-mao/config.zip
 sudo ocimao restore /var/backups/oci-mao/config.zip
+```
+
+实时日志按 `Ctrl+C` 结束查看。配置修改会保留原文件，先检查 Compose 配置再应用；应用失败自动恢复原配置。`config --rollback` 恢复最新的本部署配置副本，也可以在其后指定已保存的副本路径。
+
+菜单 16 与 `ocimao install` 使用同一条安装流程：完整目录直接重建并启动，缺少发布文件时下载并校验后修复。修复时优先沿用可读取的已装版本；版本清单也丢失时，可用 `--version` 指定版本，否则使用脚本默认版本。升级到新版本使用菜单 9 或 `ocimao upgrade`。
+
+菜单备份采用面板已有的密码加密配置格式，恢复会保留当前管理员、暂停后台任务并撤销登录会话。备份密码在终端隐藏输入。清除 Telegram 绑定同时关闭 Telegram 验证码登录，之后需重新绑定。备份密码验证连续失败会锁定，菜单 13 可以解除该锁定。
+
+HTTPS 菜单按本部署的实际代理配置和端口映射显示状态；恢复原端口访问只停止本部署的托管代理并恢复记录的连接配置。自行配置在宿主机上的 Nginx 或其他站点代理需单独维护。卸载会要求确认，并保留数据卷、`.env` 和备份。
+
+## 数据、备份与升级
+
+三个服务共享 `panel-data` 命名卷，数据库、加密密钥和运行数据保存在该卷中。不要使用 `docker compose down -v` 做常规重装或升级；它会删除数据卷。
+
+“系统设置 → 系统 → 备份恢复”可创建密码保护的面板配置备份，也可配置 OCI 对象存储或 OSS 定时备份。配置备份与完整数据卷快照用途不同：迁移完整运行数据时，需要同时保留数据库、`secret.key` 和其他卷内容。
+
+安装新版本前先备份。取得新的安装脚本后，使用原 `--dir` 和原 `--project` 执行，按实际已发布的 Release 版本设置 `--version`。已有配置与数据卷会保留；核对任务和服务状态后继续使用。
+
+网页“系统更新”使用固定仓库 `yumengya04/OCI-Mao`，与安装脚本共用 `OCI-Mao-版本` 无后缀发布包，通过对应 SHA256 文件或 GitHub 资产摘要验证。网页自动安装仍需配置独立主机更新执行器；没有执行器时可准备同一个发布包，再使用安装脚本维护。
+
+发布 0.1.1 时上传 `OCI-Mao-0.1.1`，并可附上 `OCI-Mao-0.1.1.sha256`；GitHub 提供有效资产摘要时，也能直接校验。**Release 标签、包名和包内版本必须一致**，例如标签 `0.1.1` 对应 `OCI-Mao-0.1.1`。原 0.1.0 的网页更新器不能识别该格式，首次升级请使用本仓库的新安装脚本：
+
+```bash
+sudo bash install.sh install --dir /opt/oci-mao --version 0.1.1
+```
+
+升级到 0.1.1 后，终端 `ocimao upgrade` 和网页更新均可使用同一个版本包。
+
+0.1.1 同时在 Telegram 管理员登录通知中显示账户、登录 IP 和时间，并精简系统设置中的环境信息。登录 IP 取自服务端连接地址；经反向代理或 SSH 隧道访问时，可能显示代理或隧道地址。
+
+## HTTPS 与可选 AI 网关
+
+默认端口绑定宿主机回环地址。使用域名访问时，在服务器配置 HTTPS 反向代理，并同步修改部署目录 `.env` 中的日志地址和允许的 Origin：
+
+```dotenv
+COMPOSE_PROJECT_NAME=oci-panel
+PANEL_LOG_WS_URL=wss://panel.example.com/ws/logs
+PANEL_ALLOWED_ORIGINS=https://panel.example.com
+```
+
+Nginx 示例位于二进制资源容器中，可在安装完成后查看：
+
+```bash
+cd /opt/oci-mao
+sudo docker compose -p oci-panel exec -T panel python -c \
+  'import _mao_resources; print(_mao_resources.read_text("deploy/nginx.conf.example"), end="")'
+```
+
+按示例转发面板、日志及 WebSocket 路径，设置有效证书，检查 Nginx 配置后重载，并执行 `sudo docker compose -p oci-panel up -d` 应用环境变量。
+
+基础安装包含面板内的 Oracle AI 工作空间。需要独立 AI 网关时，使用包内的可选 Compose 配置：
+
+```bash
+cd /opt/oci-mao
+sudo docker compose -p oci-panel \
+  -f compose.yaml -f deploy/compose.oracle-ai.yaml up -d --build
+```
+
+AI 扩展依赖相应租户权限与服务资格。后续维护继续使用两份 Compose 文件；基础安装脚本默认只启动三个基础服务。
+
+## 常见问题
+
+**只有安装脚本，没有 `compose.yaml` 怎么办？** 直接运行本仓库的新安装脚本，它会取得并校验二进制包。仓库根目录中的三个发布文件不是已解压的 Docker 构建目录。
+
+**菜单 9 提示缺少二进制包？** 检查最新正式 Release 的标签与资产名是否对应，例如标签 `0.1.1` 下必须有 `OCI-Mao-0.1.1`，只修改 Release 标题不会修改标签。当前版本已经是最新版时，会提示无需升级；重新安装使用菜单 16。
+
+**服务器安装完成，电脑打不开面板？** 先建立同时转发 8501 和 8502 的 SSH 隧道，再访问本机的 `http://127.0.0.1:8501`；域名访问需要配置反向代理。
+
+**安装提示缺少 Docker、Compose 或权限不足？** 按安装前准备补齐环境。使用 `sudo` 时确认 `sudo docker info` 成功，Compose 必须支持 `docker compose` 命令。
+
+**下载或镜像构建失败？** 检查服务器到 GitHub、镜像仓库和 Python 包源的连接。脚本返回非零退出码，修正后使用原目录和项目名重跑。
+
+**健康检查超时？** 在部署目录运行 `sudo docker compose -p oci-panel logs --tail 100 panel worker logs`，按失败服务排查；启动较慢时可提高 `--timeout`。
